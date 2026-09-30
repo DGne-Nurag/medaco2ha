@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "MeDaCo portal login",
+        "data": {
+          "portal": "Portal",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Log in again",
+        "data": { "password": "Password" }
+      }
+    },
+    "error": {
+      "invalid_auth": "Login failed, please check username and password.",
+      "cannot_connect": "Could not reach the MeDaCo portal."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Login updated."
+    }
+  },
+  "selector": {
+    "portal": {
+      "options": {
+        "westnetz": "Westnetz (medaco.westnetz.de)",
+        "westenergie": "Westenergie Metering (medaco.westenergie.de)"
+      }
+    }
+  }
+}
