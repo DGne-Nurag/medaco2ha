@@ -26,8 +26,14 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.util import dt as dt_util
 
 from .aggregate import to_hourly_rows
-from .api import MedacoAuthError, MedacoClient, MedacoError, MeteringPoint
-from .const import DOMAIN, INITIAL_HISTORY, OBIS_NAMES, UPDATE_INTERVAL
+from .api import Interval, Line, MedacoAuthError, MedacoClient, MedacoError, MeteringPoint
+from .const import (
+    DOMAIN,
+    FETCH_CHUNK,
+    INITIAL_HISTORY,
+    OBIS_NAMES,
+    UPDATE_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,7 +43,7 @@ class RegisterState:
     """Latest known values of one register, exposed through sensors."""
 
     metering_point: MeteringPoint
-    obis: str
+    line: Line
     statistic_id: str
     last_hour: datetime | None = None
     total_kwh: float | None = None
@@ -92,8 +98,8 @@ class MedacoCoordinator(DataUpdateCoordinator[dict[str, RegisterState]]):
             points = await self.client.get_metering_points()
             states: dict[str, RegisterState] = {}
             for point in points:
-                for obis in point.obis_codes:
-                    state = await self._import_register(point, obis)
+                for line in point.lines:
+                    state = await self._import_line(point, line)
                     states[state.statistic_id] = state
             return states
         except MedacoAuthError as err:
@@ -101,9 +107,9 @@ class MedacoCoordinator(DataUpdateCoordinator[dict[str, RegisterState]]):
         except MedacoError as err:
             raise UpdateFailed(str(err)) from err
 
-    async def _import_register(self, point: MeteringPoint, obis: str) -> RegisterState:
-        statistic_id = statistic_id_for(point.id, obis)
-        state = RegisterState(point, obis, statistic_id)
+    async def _import_line(self, point: MeteringPoint, line: Line) -> RegisterState:
+        statistic_id = statistic_id_for(point.id, line.obis)
+        state = RegisterState(point, line, statistic_id)
 
         last = await get_instance(self.hass).async_add_executor_job(
             get_last_statistics, self.hass, 1, statistic_id, True, {"sum"}
@@ -125,12 +131,19 @@ class MedacoCoordinator(DataUpdateCoordinator[dict[str, RegisterState]]):
         if start >= now:
             return state
 
-        intervals = await self.client.get_intervals(point.id, obis, start, now)
+        intervals: list[Interval] = []
+        chunk_start = start
+        while chunk_start < now:
+            chunk_end = min(chunk_start + FETCH_CHUNK, now)
+            intervals += await self.client.get_intervals(
+                point.id, line.id, chunk_start, chunk_end
+            )
+            chunk_start = chunk_end
         rows = to_hourly_rows(intervals, last_sum=last_sum, after=last_hour)
         if not rows:
             return state
 
-        name = f"{point.name} {OBIS_NAMES.get(obis, obis)}"
+        name = f"MeDaCo {point.name} {OBIS_NAMES.get(line.obis, line.obis)}"
         async_add_external_statistics(
             self.hass,
             _metadata(statistic_id, name),

@@ -2,6 +2,7 @@ name: Validate
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -17,7 +18,7 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          ignore: brands
+          ignore: brands description topics
 
   tests:
     runs-on: ubuntu-latest
@@ -26,5 +27,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install pytest aiohttp
+      - run: pip install pytest-homeassistant-custom-component
       - run: pytest -q
