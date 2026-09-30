@@ -1,24 +1,9 @@
 """Tests for the pure hourly aggregation."""
 
 from datetime import datetime, timedelta, timezone
-import importlib.util
-from pathlib import Path
-import sys
-import types
 
-# Load api.py and aggregate.py without importing the Home Assistant package.
-PKG = Path(__file__).parents[1] / "custom_components" / "medaco"
-pkg = types.ModuleType("medaco")
-pkg.__path__ = [str(PKG)]
-sys.modules["medaco"] = pkg
-for name in ("api", "aggregate"):
-    spec = importlib.util.spec_from_file_location(f"medaco.{name}", PKG / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[f"medaco.{name}"] = module
-    spec.loader.exec_module(module)
-
-from medaco.aggregate import to_hourly_rows  # noqa: E402
-from medaco.api import Interval  # noqa: E402
+from custom_components.medaco.aggregate import to_hourly_rows
+from custom_components.medaco.api import Interval
 
 T0 = datetime(2026, 9, 1, 0, 0, tzinfo=timezone.utc)
 

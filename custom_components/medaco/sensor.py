@@ -62,7 +62,7 @@ class MedacoTotalSensor(_MedacoEntity):
 
     def __init__(self, coordinator: MedacoCoordinator, statistic_id: str) -> None:
         super().__init__(coordinator, statistic_id)
-        obis = self._register.obis
+        obis = self._register.line.obis
         self._attr_unique_id = f"{statistic_id}_total"
         self._attr_name = f"{OBIS_NAMES.get(obis, obis)} importiert"
 
@@ -79,7 +79,7 @@ class MedacoLastDataSensor(_MedacoEntity):
 
     def __init__(self, coordinator: MedacoCoordinator, statistic_id: str) -> None:
         super().__init__(coordinator, statistic_id)
-        obis = self._register.obis
+        obis = self._register.line.obis
         self._attr_unique_id = f"{statistic_id}_last_data"
         self._attr_name = f"{OBIS_NAMES.get(obis, obis)} Datenstand"
 

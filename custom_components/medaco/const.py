@@ -13,16 +13,18 @@ PORTALS = {
 }
 DEFAULT_PORTAL = "westnetz"
 
-# The portal publishes readings with a delay of roughly a day, so polling
-# more often than a few times per day gains nothing.
-UPDATE_INTERVAL = timedelta(hours=4)
+# Smart meter gateways deliver 15 minute values to the portal within minutes.
+UPDATE_INTERVAL = timedelta(minutes=15)
 
-# How far back to fetch on the very first import.
-INITIAL_HISTORY = timedelta(days=90)
+# How far back to fetch on the very first import, and the size of each
+# request while catching up.
+INITIAL_HISTORY = timedelta(days=365)
+FETCH_CHUNK = timedelta(days=31)
 
-# OBIS codes for the registers the portal reports.
-OBIS_CONSUMPTION = "1.8.0"
-OBIS_FEED_IN = "2.8.0"
+# OBIS codes of the 15 minute energy registers (1.29.0 = Bezug, 2.29.0 =
+# Einspeisung) the portal reports for an intelligent metering system.
+OBIS_CONSUMPTION = "1-1:1.29.0"
+OBIS_FEED_IN = "1-1:2.29.0"
 OBIS_NAMES = {
     OBIS_CONSUMPTION: "Bezug",
     OBIS_FEED_IN: "Einspeisung",
