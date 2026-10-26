@@ -14,6 +14,7 @@ from homeassistant.components.recorder.models import (
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
+    statistics_during_period,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
@@ -32,6 +33,7 @@ from .const import (
     FETCH_CHUNK,
     INITIAL_HISTORY,
     OBIS_NAMES,
+    REFRESH_WINDOW,
     UPDATE_INTERVAL,
 )
 
@@ -115,17 +117,23 @@ class MedacoCoordinator(DataUpdateCoordinator[dict[str, RegisterState]]):
             get_last_statistics, self.hass, 1, statistic_id, True, {"sum"}
         )
         now = dt_util.utcnow()
+        this_hour = now.replace(minute=0, second=0, microsecond=0)
         if last.get(statistic_id):
             row = last[statistic_id][0]
             last_hour = datetime.fromtimestamp(row["start"], tz=timezone.utc)
             last_sum = row["sum"] or 0.0
-            start = last_hour + timedelta(hours=1)
+            # Re-import the refresh window so late or corrected values land.
+            start = min(last_hour + timedelta(hours=1), this_hour - REFRESH_WINDOW)
+            base_sum = (
+                last_sum
+                if start > last_hour
+                else await self._sum_before(statistic_id, start)
+            )
         else:
             last_hour = None
             last_sum = 0.0
-            start = (now - INITIAL_HISTORY).replace(
-                minute=0, second=0, microsecond=0
-            )
+            start = this_hour - INITIAL_HISTORY
+            base_sum = 0.0
 
         state.last_hour, state.total_kwh = last_hour, last_sum
         if start >= now:
@@ -139,8 +147,12 @@ class MedacoCoordinator(DataUpdateCoordinator[dict[str, RegisterState]]):
                 point.id, line.id, chunk_start, chunk_end
             )
             chunk_start = chunk_end
-        rows = to_hourly_rows(intervals, last_sum=last_sum, after=last_hour)
-        if not rows:
+        rows = to_hourly_rows(
+            intervals, last_sum=base_sum, after=start - timedelta(hours=1)
+        )
+        # A short answer would rewrite sums below rows that stay in the
+        # database; keep what we have until the portal delivers again.
+        if not rows or (last_hour is not None and rows[-1].start < last_hour):
             return state
 
         name = f"MeDaCo {point.name} {OBIS_NAMES.get(line.obis, line.obis)}"
@@ -152,3 +164,18 @@ class MedacoCoordinator(DataUpdateCoordinator[dict[str, RegisterState]]):
         _LOGGER.debug("Imported %d hours for %s", len(rows), statistic_id)
         state.last_hour, state.total_kwh = rows[-1].start, rows[-1].sum
         return state
+
+    async def _sum_before(self, statistic_id: str, hour: datetime) -> float:
+        """Return the running total at the end of the last row before hour."""
+        result = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            hour - timedelta(days=31),
+            hour,
+            {statistic_id},
+            "hour",
+            None,
+            {"sum"},
+        )
+        rows = result.get(statistic_id) or []
+        return (rows[-1]["sum"] or 0.0) if rows else 0.0

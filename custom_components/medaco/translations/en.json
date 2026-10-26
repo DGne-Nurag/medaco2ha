@@ -11,7 +11,9 @@
       },
       "reauth_confirm": {
         "title": "Log in again",
-        "data": { "password": "Password" }
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -29,6 +31,12 @@
         "westnetz": "Westnetz (medaco.westnetz.de)",
         "westenergie": "Westenergie Metering (medaco.westenergie.de)"
       }
+    }
+  },
+  "services": {
+    "reimport": {
+      "name": "Re-import history",
+      "description": "Deletes the imported MeDaCo statistics and fetches the last 365 days from the portal again."
     }
   }
 }

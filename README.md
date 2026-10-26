@@ -18,11 +18,14 @@ Energie-Dashboard als Netzbezug und Netzeinspeisung auswählen.
   letzten 365 Tage.
 - Die Werte werden zu Stundenwerten zusammengefasst und als externe Statistik
   `medaco:<zählpunkt>_1_1_1_29_0` (Bezug) bzw. `..._2_29_0` (Einspeisung)
-  importiert. Eine Stunde wird erst übernommen, wenn alle vier Viertelstunden
-  vorliegen. Kommen Werte verspätet, werden sie rückwirkend zur richtigen
-  Uhrzeit eingetragen.
-- Ersatzwerte (Status „E“) übernimmt die Integration wie normale Werte. Wenn
-  der Netzbetreiber sie später korrigiert, wird das nicht nachgezogen.
+  importiert. Die jeweils neueste Stunde wird erst übernommen, wenn alle vier
+  Viertelstunden vorliegen.
+- Die letzten 7 Tage werden bei jeder Abfrage erneut geholt und neu
+  geschrieben. Nachgelieferte Werte, geschlossene Lücken und korrigierte
+  Ersatzwerte (Status „E“) landen so automatisch in den Statistiken.
+- Für ältere Korrekturen gibt es die Aktion `medaco.reimport` (Entwicklerwerkzeuge
+  → Aktionen): Sie löscht die importierten Statistiken und holt die letzten
+  365 Tage neu.
 - Pro Zählpunkt gibt es zwei Diagnose-Sensoren: importierter Zählerstand und
   Datenstand (letzte vollständige Stunde).
 

@@ -33,12 +33,15 @@ class FakePortal:
     def __init__(self, end: datetime) -> None:
         self.end = end
         self.calls: list[tuple[datetime, datetime]] = []
+        self.values: dict[datetime, float | None] = {}
 
     async def get_intervals(self, mp_id, line_id, start, end):
         self.calls.append((start, end))
         out, t = [], start
         while t < min(end, self.end):
-            out.append(Interval(t, 0.25))
+            kwh = self.values.get(t, 0.25)
+            if kwh is not None:
+                out.append(Interval(t, kwh))
             t += timedelta(minutes=15)
         return out
 
@@ -113,6 +116,48 @@ async def test_imports_hourly_statistics_incrementally(
     assert total is not None and float(total.state) == second[-1]["sum"]
 
 
+async def test_late_and_corrected_values_are_reimported(hass: HomeAssistant) -> None:
+    now = dt_util.utcnow().replace(minute=5, second=0, microsecond=0)
+    this_hour = now.replace(minute=0)
+    portal = FakePortal(end=this_hour)
+    gap_hour = this_hour - timedelta(days=2)
+    fixed_hour = this_hour - timedelta(days=3)
+    # The gap hour is missing completely, the other hour has a substitute value.
+    for i in range(4):
+        portal.values[gap_hour + timedelta(minutes=15 * i)] = None
+        portal.values[fixed_hour + timedelta(minutes=15 * i)] = 0.0
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_PORTAL: "westnetz", CONF_USERNAME: "Nutzer", CONF_PASSWORD: "pw"},
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(f"{CLIENT}.get_metering_points", return_value=[POINT]),
+        patch(f"{CLIENT}.get_intervals", side_effect=portal.get_intervals),
+        patch("homeassistant.util.dt.utcnow", return_value=now),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        await async_wait_recording_done(hass)
+        before = await _stats(hass)
+
+        # The portal delivers the missing hour and corrects the other one.
+        portal.values.clear()
+        await entry.runtime_data.async_refresh()
+        await hass.async_block_till_done()
+        await async_wait_recording_done(hass)
+
+    after = await _stats(hass)
+    by_start = {row["start"]: row for row in after}
+    assert by_start[gap_hour.timestamp()]["state"] == 1.0
+    assert by_start[fixed_hour.timestamp()]["state"] == 1.0
+    assert after[-1]["sum"] == before[-1]["sum"] + 2.0
+    assert after[-1]["sum"] == len(after) * 1.0
+    # Sums stay continuous: every hour adds exactly one kWh.
+    assert all(b["sum"] - a["sum"] == 1.0 for a, b in zip(after, after[1:]))
+
+
 async def _stats(hass: HomeAssistant) -> list[dict]:
     result = await hass.async_add_executor_job(
         statistics_during_period,
@@ -125,3 +170,36 @@ async def _stats(hass: HomeAssistant) -> list[dict]:
         {"sum", "state"},
     )
     return result.get(STAT_ID, [])
+
+
+async def test_reimport_service_rebuilds_history(hass: HomeAssistant) -> None:
+    now = dt_util.utcnow().replace(minute=5, second=0, microsecond=0)
+    portal = FakePortal(end=now.replace(minute=0))
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_PORTAL: "westnetz", CONF_USERNAME: "Nutzer", CONF_PASSWORD: "pw"},
+    )
+    entry.add_to_hass(hass)
+    old_hour = now.replace(minute=0) - timedelta(days=30)
+    for i in range(4):
+        portal.values[old_hour + timedelta(minutes=15 * i)] = 0.0
+
+    with (
+        patch(f"{CLIENT}.get_metering_points", return_value=[POINT]),
+        patch(f"{CLIENT}.get_intervals", side_effect=portal.get_intervals),
+        patch("homeassistant.util.dt.utcnow", return_value=now),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        await async_wait_recording_done(hass)
+        before = await _stats(hass)
+
+        # Outside the refresh window only the service picks up the correction.
+        portal.values.clear()
+        await hass.services.async_call(DOMAIN, "reimport", blocking=True)
+        await hass.async_block_till_done()
+        await async_wait_recording_done(hass)
+
+    after = await _stats(hass)
+    assert after[-1]["sum"] == before[-1]["sum"] + 1.0
+    assert after[-1]["sum"] == len(after) * 1.0
