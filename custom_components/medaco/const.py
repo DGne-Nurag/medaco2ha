@@ -21,6 +21,10 @@ UPDATE_INTERVAL = timedelta(minutes=15)
 INITIAL_HISTORY = timedelta(days=365)
 FETCH_CHUNK = timedelta(days=31)
 
+# The portal fills gaps and replaces substitute values after the fact, so the
+# most recent days are fetched and written again on every update.
+REFRESH_WINDOW = timedelta(days=7)
+
 # OBIS codes of the 15 minute energy registers (1.29.0 = Bezug, 2.29.0 =
 # Einspeisung) the portal reports for an intelligent metering system.
 OBIS_CONSUMPTION = "1-1:1.29.0"
